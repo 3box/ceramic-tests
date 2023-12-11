@@ -2476,7 +2476,7 @@ dependencies = [
 [[package]]
 name = "keramik-common"
 version = "0.1.0"
-source = "git+https://github.com/3box/keramik.git?branch=main#1dbeb312f5d0e9036b5cf7d235beac811bf5e6e5"
+source = "git+https://github.com/3box/keramik.git?branch=main#69dfb45d35c2eb762234531786775785746417aa"
 dependencies = [
  "anyhow",
  "gethostname",
@@ -2487,7 +2487,7 @@ dependencies = [
 [[package]]
 name = "keramik-operator"
 version = "0.0.1"
-source = "git+https://github.com/3box/keramik.git?branch=main#1dbeb312f5d0e9036b5cf7d235beac811bf5e6e5"
+source = "git+https://github.com/3box/keramik.git?branch=main#69dfb45d35c2eb762234531786775785746417aa"
 dependencies = [
  "k8s-openapi",
  "keramik-common",
