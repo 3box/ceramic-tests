@@ -88,6 +88,8 @@ There are some helpful scripts in this repo to make testing locally possible:
 The script kills those processes and creates new ones. However, if you need you can kill them directly.
 The script should be run anytime a pod in the network restarts.
 
+If you would like to run a test for the pubsub responder, please use `with-unavailabe-ceramic-node.yaml`. This will create a third ceramic node that is unreachable through pubsub. This third node triggers the pubsub responder test. 
+
 You can also run these tests against durable infrastructure (e.g. QA):
 ```bash
     cd suite

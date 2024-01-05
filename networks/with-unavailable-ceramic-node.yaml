@@ -1,0 +1,19 @@
+---
+apiVersion: "keramik.3box.io/v1alpha1"
+kind: Network
+metadata:
+  name: "with-unavailable-ceramic-node"
+spec:
+  replicas: 3
+  ceramic:
+    - weight: 2
+      ipfs: 
+        go: {}
+    - weight: 1
+      ipfs:
+        go: {}
+      env: 
+        CERAMIC_NETWORK_TOPIC: "dogs"
+  cas:
+    ipfs: 
+      go: {}
