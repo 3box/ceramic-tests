@@ -18,7 +18,7 @@ const ComposeDbUrls = String(process.env.COMPOSEDB_URLS).split(',')
 const adminSeeds = String(process.env.COMPOSEDB_ADMIN_DID_SEEDS).split(',')
 const nodeSyncWaitTimeSec = 2
 
-describe.skip('Model Integration Test', () => {
+describe('Model Integration Test', () => {
   let ceramicNode1: CeramicClient
   let ceramicNode2: CeramicClient
   let modelId: StreamID
