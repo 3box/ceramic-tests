@@ -3,14 +3,13 @@ import { beforeAll, describe, test, expect } from '@jest/globals'
 import { Composite } from '@composedb/devtools'
 import { newCeramic } from '../../utils/ceramicHelpers.js'
 import { createDid } from '../../utils/didHelper.js'
-import { utilities } from '../../utils/common.js'
 import { BasicSchema } from '../../graphql-schemas/basicSchema'
 import { StreamID } from '@ceramicnetwork/streamid'
+import { waitForDocument } from '../../utils/composeDbHelpers.js'
 
-const delay = utilities.delay
 const ComposeDbUrls = String(process.env.COMPOSEDB_URLS).split(',')
 const adminSeeds = String(process.env.COMPOSEDB_ADMIN_DID_SEEDS).split(',')
-const nodeSyncDelay = 2
+const timeoutMs = 60000
 
 describe('Sync Model and ModelInstanceDocument using ComposeDB GraphQL API', () => {
   let composeClient1: ComposeClient
@@ -77,9 +76,6 @@ describe('Sync Model and ModelInstanceDocument using ComposeDB GraphQL API', () 
     const documentId = responseObject?.data?.createBasicSchema?.document?.id
     expect(documentId).toBeDefined()
 
-    // Wait for the document to sync across nodes
-    await delay(nodeSyncDelay)
-
     const getDocumentByStreamIdQuery = `
     query GetBasicSchemaById($id: ID!) {
         node(id: $id) {
@@ -95,11 +91,13 @@ describe('Sync Model and ModelInstanceDocument using ComposeDB GraphQL API', () 
       id: documentId,
     }
 
-    const queryResponse = await composeClient2.executeQuery(
+    const queryResponse = await waitForDocument(
+      composeClient2,
       getDocumentByStreamIdQuery,
       getDocumentByStreamIdVariables,
+      timeoutMs,
     )
-    const queryResponseObj = await JSON.parse(JSON.stringify(queryResponse))
+    const queryResponseObj = JSON.parse(JSON.stringify(queryResponse))
     const queryResponseid = queryResponseObj?.data?.node?.id
     expect(queryResponseid).toBeDefined()
   })
