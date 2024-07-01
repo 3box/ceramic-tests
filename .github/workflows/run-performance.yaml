@@ -5,7 +5,7 @@ on:
     inputs:
       test_name:
         type: string
-        description: Folder name containing the performance test yaml
+        description: Folder name under "performance" that contains yaml
         required: true
       js_ceramic_image:
         type: string
@@ -23,20 +23,26 @@ on:
         required: true
         default: public.ecr.aws/r5b3e0r5/3box/keramik-runner:latest
 
-env:
-  CARGO_TERM_COLOR: always
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
-
 jobs:
-  template-network:
-    name: Template Network
+  run-performance-test:
+    name: Run Performance Test ${{ github.run_id }}
     runs-on: ubuntu-latest
+    environment: cas-scaling-2024
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Install jq
-        run: sudo apt-get install jq
+
+      - name: Install yq
+        run: |
+          # sudo apt-get update
+          # sudo apt-get install -y software-properties-common
+          # sudo add-apt-repository -y ppa:rmescandon/yq
+          # sudo apt-get update
+          # sudo apt-get install -y yq
+          curl -L https://github.com/mikefarah/yq/releases/download/v4.40.7/yq_linux_amd64 -o yq
+          chmod +x yq
+          sudo mv ./yq /usr/local/bin/yq
+
       - name: Template network
         run: |
           set -exo pipefail
@@ -44,5 +50,86 @@ jobs:
           export SCENARIO_IMAGE=${{ inputs.scenario_image }}
           export JS_CERAMIC_IMAGE=${{ inputs.js_ceramic_image }}
           export TEST_NAME=${{ inputs.test_name }}
-          ls -l tests/performance/$TEST_NAME.yaml
+          ls -l performance/$TEST_NAME
+          export THIS_TEST=${{ inputs.test_name }}-${{ github.run_id }}
+          mkdir -p performance/$THIS_TEST
+          # set the network name yaml key to the test names
+          yq e '.metadata.name = env(THIS_TEST)' performance/$TEST_NAME/network.yaml \
+            > performance/$THIS_TEST/network.yaml
+          yq e '.spec.ceramic[0].image = env(JS_CERAMIC_IMAGE)' -i performance/$THIS_TEST/network.yaml
+          yq e '.spec.ceramic[0].ipfs.rust.image = env(RUST_CERAMIC_IMAGE)' -i performance/$THIS_TEST/network.yaml
+          cat performance/$THIS_TEST/network.yaml
+          echo "THIS_TEST=$THIS_TEST" >> $GITHUB_ENV
+          echo "THIS_TEST_NAMESPACE=keramik-${THIS_TEST}" >> $GITHUB_ENV
+          echo "TEST_NAME=${TEST_NAME}" >> $GITHUB_ENV
 
+      - name: Setup GKE auth
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: 'google-github-actions/get-gke-credentials@v1'
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_ZONE }}
+
+      - name: Deploy network
+        run: |
+          kubectl apply -f performance/$THIS_TEST/network.yaml
+
+      - name: Wait for bootstrap to complete
+        timeout-minutes: 8
+        run: |
+          set -exo pipefail
+          sleep 60
+          kubectl wait --for=condition=ready \
+            --timeout=240s \
+            pod \
+            -l app=ceramic \
+            -n ${THIS_TEST_NAMESPACE}
+          sleep 60
+          kubectl wait --for=condition=complete \
+            --timeout=120s \
+            job/bootstrap \
+            -n ${THIS_TEST_NAMESPACE}
+
+      - name: Template simulation
+        run: |
+          set -exo pipefail
+          yq e '.metadata.namespace = env(THIS_TEST_NAMESPACE)' performance/$TEST_NAME/simulation.yaml \
+            > performance/$THIS_TEST/simulation.yaml
+          cat performance/$THIS_TEST/simulation.yaml
+
+      - name: Run simulation
+        run: |
+          set -exo pipefail
+          kubectl apply -f performance/$THIS_TEST/simulation.yaml
+          SIMULATION_RUNTIME=$(yq e '.spec.runTime' performance/$THIS_TEST/simulation.yaml)
+          echo "SIMULATION_RUNTIME=${SIMULATION_RUNTIME}" >> $GITHUB_ENV
+
+      - name: Notify Discord
+        env:
+          SIMULATION_COLOR: 3066993
+        run: |
+          set -exo pipefail
+          export SIMULATION_STATUS_TAG="Simulation $THIS_TEST started"
+          export CLUSTER_NAME=${{ vars.GKE_CLUSTER }}
+          envsubst < notifications/notification-template.json  > message.json
+          cat message.json
+          curl -v -H "Content-Type: application/json" -X POST -d @./message.json "${{ secrets.DISCORD_WEBHOOK_URL_SUCCEEDED }}"
+
+      - name: Wait for simulation to complete
+        run: |
+          set -exo pipefail
+          # runtime is in minutes
+          sleep $((${SIMULATION_RUNTIME} * 60))
+          kubectl wait --for=condition=complete \
+            --timeout=120s \
+            job/simulate-manager \
+            -n ${THIS_TEST_NAMESPACE}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kubectl delete -f performance/$THIS_TEST/network.yaml
